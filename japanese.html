@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JGame</title>
+    <style>
+        :root {
+            --primary: #4A90E2;
+            --bg-color: #F5F7FA;
+            --box-bg: #FFFFFF;
+            --text-main: #333333;
+            --correct: #2ECC71;
+            --wrong: #E74C3C;
+            --gold: #F1C40F;
+        }
+        body {
+            font-family: 'Pretendard', 'Malgun Gothic', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        h1 { color: var(--primary); text-align: center; margin-top: 40px; }
+        
+        /* 상단 유저 정보 (IP, 닉네임, 등급, 점수) */
+        .user-top-bar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 100;
+        }
+        .user-rank { font-weight: bold; color: var(--primary); }
+        .user-score { font-weight: bold; color: var(--wrong); }
+        .btn-small {
+            padding: 5px 10px; font-size: 12px; border: none; border-radius: 5px;
+            background-color: #95A5A6; color: white; cursor: pointer;
+        }
+        .btn-small:hover { background-color: #7F8C8D; }
+
+        .container {
+            width: 100%; max-width: 800px;
+            background: var(--box-bg);
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 30px;
+            box-sizing: border-box;
+            min-height: 500px;
+            position: relative;
+            margin-top: 50px;
+        }
+        .screen { display: none; }
+        .screen.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* 버튼 및 메뉴 스타일 */
+        .grid-menu {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-top: 20px;
+        }
+        button {
+            padding: 15px; border: none; border-radius: 10px; cursor: pointer;
+            background-color: var(--primary); color: white; font-size: 16px; font-weight: bold;
+            transition: background 0.3s, transform 0.1s;
+        }
+        button:hover { background-color: #357ABD; transform: translateY(-2px); }
+        button:active { transform: translateY(0); }
+        .btn-secondary { background-color: #95A5A6; }
+        .btn-ranking { background-color: var(--gold); color: #333; }
+        .btn-ranking:hover { background-color: #D4AC0D; }
+        
+        /* 퀴즈 UI */
+        .quiz-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px;}
+        .score-display { font-size: 16px; font-weight: bold; color: var(--text-main); background: #eee; padding: 5px 15px; border-radius: 20px;}
+        .question-box {
+            font-size: 80px; text-align: center; margin: 40px 0; font-weight: bold; height: 120px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .font-type-1 { font-family: 'Meiryo', sans-serif; }
+        .font-type-2 { font-family: 'Yu Mincho', serif; }
+        
+        .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .option-btn { font-size: 20px; padding: 20px; background-color: #f1f2f6; color: #333; border: 2px solid #dcdde1; }
+        .option-btn:hover { background-color: #dfe4ea; }
+        .option-btn.correct { background-color: var(--correct); color: white; border-color: var(--correct); }
+        .option-btn.wrong { background-color: var(--wrong); color: white; border-color: var(--wrong); }
+        
+        .feedback { text-align: center; font-size: 100px; font-weight: bold; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 10;}
+        
+        /* 캔버스 */
+        #drawCanvas { border: 2px dashed #ccc; border-radius: 10px; cursor: crosshair; background: #fafafa; display: block; margin: 0 auto; touch-action: none; }
+        
+        /* 통계 및 랭킹 UI */
+        .stats-bar { display: flex; align-items: center; margin: 15px 0; }
+        .bar-label { width: 120px; font-weight: bold; }
+        .bar-track { flex-grow: 1; height: 25px; background: #eee; border-radius: 10px; overflow: hidden; position: relative;}
+        .bar-fill { height: 100%; background: var(--wrong); transition: width 0.5s; }
+        .bar-value { margin-left: 15px; font-weight: bold; width: 40px; }
+
+        .ranking-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .ranking-table th, .ranking-table td { padding: 12px; text-align: center; border-bottom: 1px solid #ddd; }
+        .ranking-table th { background-color: #f8f9fa; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<!-- 상단 유저 상태바 -->
+<div class="user-top-bar" id="userTopBar" style="display: none;">
+    <span id="topRank" class="user-rank">등급</span>
+    <span id="topName">로딩중...</span>
+    <span id="topScore" class="user-score">0점</span>
+    <button class="btn-small" onclick="changeNickname()">닉네임 변경</button>
+</div>
+
+<div class="container">
+    <!-- 메인 화면 -->
+    <div id="screen-main" class="screen active">
+        <h1>JGame</h1>
+        <div class="grid-menu" style="margin-top: 40px;">
+            <button onclick="startQuiz('all')">전체 랜덤 테스트</button>
+            <button onclick="nav('screen-hiragana')">히라가나</button>
+            <button onclick="nav('screen-culture')">문화</button>
+            <button onclick="nav('screen-vocab')">어휘</button>
+            <button onclick="nav('screen-life')">실생활</button>
+        </div>
+        <div style="margin-top: 40px; display: flex; justify-content: space-between;">
+            <button class="btn-ranking" onclick="showRanking()">명예의 전당 (랭킹)</button>
+            <button class="btn-secondary" onclick="showStats()">오답률 분석 그래프</button>
+        </div>
+    </div>
+
+    <!-- 히라가나 서브메뉴 -->
+    <div id="screen-hiragana" class="screen">
+        <h2>히라가나 테스트</h2>
+        <div class="grid-menu">
+            <button onclick="startQuiz('hira_all')">히라가나 전체</button>
+            <button onclick="startQuiz('hira_50')">50음도</button>
+            <button onclick="startQuiz('hira_daku')">탁음</button>
+            <button onclick="startQuiz('hira_handaku')">반탁음</button>
+            <button onclick="startQuiz('hira_yoon')">요음</button>
+            <button onclick="startQuiz('hira_chouon')">장음/촉음/발음</button>
+            <button onclick="startQuiz('hira_num')">숫자</button>
+            <button onclick="startWritingTest()" style="background-color: #E67E22;">히라가나 작성(쓰기)</button>
+        </div>
+        <br><button class="btn-secondary" onclick="nav('screen-main')">메인으로</button>
+    </div>
+
+    <!-- 문화 서브메뉴 -->
+    <div id="screen-culture" class="screen">
+        <h2>일본의 문화</h2>
+        <div class="grid-menu">
+            <button onclick="startQuiz('culture_nonverbal')">비언어 문화</button>
+            <button onclick="startQuiz('culture_verbal')">언어 문화</button>
+        </div>
+        <br><button class="btn-secondary" onclick="nav('screen-main')">메인으로</button>
+    </div>
+
+    <!-- 어휘 서브메뉴 -->
+    <div id="screen-vocab" class="screen">
+        <h2>어휘 테스트</h2>
+        <div class="grid-menu">
+            <button onclick="startQuiz('vocab_all')">전체 어휘</button>
+            <button onclick="startQuiz('vocab_place')">장소</button>
+            <button onclick="startQuiz('vocab_country')">나라</button>
+            <button onclick="startQuiz('vocab_hobby')">취미</button>
+            <button onclick="startQuiz('vocab_location')">위치</button>
+            <button onclick="startQuiz('vocab_particle')">조사 발음</button>
+            <button onclick="nav('screen-usermode')" style="background-color: #8E44AD;">사용자 모드(단어장)</button>
+        </div>
+        <br><button class="btn-secondary" onclick="nav('screen-main')">메인으로</button>
+    </div>
+
+    <!-- 실생활 서브메뉴 -->
+    <div id="screen-life" class="screen">
+        <h2>실생활 및 정보</h2>
+        <div class="grid-menu">
+            <button onclick="startQuiz('life_intro')">자기소개</button>
+            <button onclick="startQuiz('life_info')">일본 기본정보(경제/지리/정치)</button>
+        </div>
+        <br><button class="btn-secondary" onclick="nav('screen-main')">메인으로</button>
+    </div>
+
+    <!-- 사용자 모드 설정 화면 -->
+    <div id="screen-usermode" class="screen">
+        <h2>나만의 단어장 (사용자 모드)</h2>
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <input type="text" id="customJa" placeholder="일본어" style="padding:10px; flex: 1; border: 1px solid #ccc; border-radius: 5px;">
+            <input type="text" id="customKo" placeholder="한국어 뜻" style="padding:10px; flex: 1; border: 1px solid #ccc; border-radius: 5px;">
+            <button onclick="addCustomWord()">추가</button>
+        </div>
+        <ul id="customWordList" style="text-align: left; max-height: 150px; overflow-y: auto; background: #f9f9f9; padding: 15px; border-radius: 5px;"></ul>
+        <div class="grid-menu">
+            <button onclick="startQuiz('vocab_custom')" style="background-color: #8E44AD;">사용자 단어 테스트 시작</button>
+        </div>
+        <br><button class="btn-secondary" onclick="nav('screen-vocab')">뒤로</button>
+    </div>
+
+    <!-- 퀴즈 화면 -->
+    <div id="screen-quiz" class="screen">
+        <div class="quiz-header">
+            <span id="quiz-title" style="font-size: 20px; font-weight: bold; color: var(--primary);">테스트 진행 중</span>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span class="score-display">획득 점수: <span id="session-score" style="color: var(--primary);">0</span>점</span>
+                <select id="lang-dir" onchange="nextQuestion()" style="padding: 8px; font-size: 14px; border-radius: 5px; border: 1px solid #ccc;">
+                    <option value="ja-ko">일본어 -> 한국어</option>
+                    <option value="ko-ja">한국어 -> 일본어</option>
+                </select>
+                <button class="btn-secondary" onclick="stopQuiz()" style="padding: 8px 15px;">Stop</button>
+            </div>
+        </div>
+        <div id="question" class="question-box">문제</div>
+        <div class="options-grid" id="options"></div>
+        <div id="feedback-o" class="feedback" style="color: var(--correct);">O</div>
+        <div id="feedback-x" class="feedback" style="color: var(--wrong);">X</div>
+    </div>
+
+    <!-- 쓰기 테스트 화면 -->
+    <div id="screen-write" class="screen">
+        <div class="quiz-header">
+            <span style="font-size: 20px; font-weight: bold;">히라가나 작성 테스트</span>
+            <button class="btn-secondary" onclick="nav('screen-hiragana')" style="padding: 8px 15px;">Stop</button>
+        </div>
+        <h3 id="write-question" style="text-align: center; font-size: 24px;">발음: 아</h3>
+        <canvas id="drawCanvas" width="300" height="300"></canvas>
+        <div style="text-align: center; margin-top: 20px; display: flex; justify-content: center; gap: 10px;">
+            <button onclick="clearCanvas()" class="btn-secondary">지우기</button>
+            <button onclick="showWriteAnswer()" style="background-color: #E67E22;">정답 확인</button>
+            <button onclick="nextWriteQuestion()">다음 문제</button>
+        </div>
+        <div id="write-answer" style="text-align: center; font-size: 80px; margin-top: 20px; font-weight: bold; display: none; color: var(--primary);">あ</div>
+    </div>
+
+    <!-- 통계 화면 -->
+    <div id="screen-stats" class="screen">
+        <h2>오답률 분석 그래프</h2>
+        <p>지금까지 틀린 문제 유형을 통계적으로 보여줍니다.</p>
+        <div id="stats-container" style="background: #f9f9f9; padding: 20px; border-radius: 10px; margin-top: 20px;"></div>
+        <br><button class="btn-secondary" onclick="nav('screen-main')">메인으로</button>
+    </div>
+
+    <!-- 랭킹 화면 -->
+    <div id="screen-ranking" class="screen">
+        <h2>명예의 전당</h2>
+        <p style="text-align: center; color: #7f8c8d;">JGame 글로벌 리더보드 (IP 기반 누적 기록)</p>
+        <div id="ranking-container" style="background: #fff; padding: 20px; border-radius: 10px; margin-top: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);"></div>
+        <div style="text-align: center; margin-top: 20px;">
+            <button class="btn-secondary" onclick="nav('screen-main')">메인으로</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+/* =========================================
+   데이터 베이스 
+========================================= */
+const DB = {
+    hira_50: [{ja:'あ',ko:'아'},{ja:'い',ko:'이'},{ja:'う',ko:'우'},{ja:'え',ko:'에'},{ja:'お',ko:'오'},{ja:'か',ko:'카'},{ja:'き',ko:'키'},{ja:'く',ko:'쿠'},{ja:'け',ko:'케'},{ja:'こ',ko:'코'},{ja:'さ',ko:'사'},{ja:'し',ko:'시'},{ja:'す',ko:'스'},{ja:'せ',ko:'세'},{ja:'そ',ko:'소'},{ja:'た',ko:'타'},{ja:'ち',ko:'치'},{ja:'つ',ko:'츠'},{ja:'て',ko:'테'},{ja:'と',ko:'토'},{ja:'な',ko:'나'},{ja:'に',ko:'니'},{ja:'ぬ',ko:'누'},{ja:'ね',ko:'네'},{ja:'の',ko:'노'},{ja:'は',ko:'하'},{ja:'ひ',ko:'히'},{ja:'ふ',ko:'후'},{ja:'へ',ko:'헤'},{ja:'ほ',ko:'호'},{ja:'ま',ko:'마'},{ja:'み',ko:'미'},{ja:'む',ko:'무'},{ja:'め',ko:'메'},{ja:'も',ko:'모'},{ja:'や',ko:'야'},{ja:'ゆ',ko:'유'},{ja:'よ',ko:'요'},{ja:'ら',ko:'라'},{ja:'り',ko:'리'},{ja:'る',ko:'루'},{ja:'れ',ko:'레'},{ja:'ろ',ko:'로'},{ja:'わ',ko:'와'},{ja:'を',ko:'오(조사)'},{ja:'ん',ko:'응'}],
+    hira_daku: [{ja:'が',ko:'가'},{ja:'ぎ',ko:'기'},{ja:'ぐ',ko:'구'},{ja:'げ',ko:'게'},{ja:'ご',ko:'고'},{ja:'ざ',ko:'자'},{ja:'じ',ko:'지'},{ja:'ず',ko:'즈'},{ja:'ぜ',ko:'제'},{ja:'ぞ',ko:'조'},{ja:'だ',ko:'다'},{ja:'ぢ',ko:'지(특수)'},{ja:'づ',ko:'즈(특수)'},{ja:'で',ko:'데'},{ja:'ど',ko:'도'},{ja:'ば',ko:'바'},{ja:'び',ko:'비'},{ja:'ぶ',ko:'부'},{ja:'べ',ko:'베'},{ja:'ぼ',ko:'보'}],
+    hira_handaku: [{ja:'ぱ',ko:'파'},{ja:'ぴ',ko:'피'},{ja:'ぷ',ko:'푸'},{ja:'ぺ',ko:'페'},{ja:'ぽ',ko:'포'}],
+    hira_yoon: [{ja:'きゃ',ko:'캬'},{ja:'きゅ',ko:'큐'},{ja:'きょ',ko:'쿄'},{ja:'しゃ',ko:'샤'},{ja:'しゅ',ko:'슈'},{ja:'しょ',ko:'쇼'},{ja:'ちゃ',ko:'챠'},{ja:'ちゅ',ko:'츄'},{ja:'ちょ',ko:'쵸'},{ja:'にゃ',ko:'냐'},{ja:'にゅ',ko:'뉴'},{ja:'にょ',ko:'뇨'},{ja:'ひゃ',ko:'햐'},{ja:'ひゅ',ko:'휴'},{ja:'ひょ',ko:'효'},{ja:'みゃ',ko:'먀'},{ja:'みゅ',ko:'뮤'},{ja:'みょ',ko:'묘'},{ja:'りゃ',ko:'랴'},{ja:'りゅ',ko:'류'},{ja:'りょ',ko:'료'},{ja:'ぎゃ',ko:'갸'},{ja:'ぎゅ',ko:'규'},{ja:'ぎょ',ko:'교'},{ja:'じゃ',ko:'쟈'},{ja:'じゅ',ko:'쥬'},{ja:'じょ',ko:'죠'},{ja:'びゃ',ko:'뱌'},{ja:'びゅ',ko:'뷰'},{ja:'びょ',ko:'뵤'},{ja:'ぴゃ',ko:'퍄'},{ja:'ぴゅ',ko:'퓨'},{ja:'ぴょ',ko:'표'}],
+    hira_chouon: [{ja:'っ',ko:'촉음 (k, s, t, p음 앞)'},{ja:'ん',ko:'발음 (m, n, ng, N)'},{ja:'ー',ko:'가타카나 장음 (한 박 더 길게)'}],
+    hira_num: [{ja:'いち',ko:'1'},{ja:'に',ko:'2'},{ja:'さん',ko:'3'},{ja:'よん/し',ko:'4'},{ja:'ご',ko:'5'},{ja:'ろく',ko:'6'},{ja:'なな/しち',ko:'7'},{ja:'はち',ko:'8'},{ja:'きゅう/く',ko:'9'},{ja:'じゅう',ko:'10'},{ja:'まる/れい/ゼロ',ko:'0'},{ja:'の',ko:'-(전화번호)'}],
+    culture_nonverbal: [{ja:'허리 숙여 인사',ko:'처음 만났을 때 (악수 대신)'},{ja:'명함 교환',ko:'처음 만났을 때 비즈니스 매너'},{ja:'코 가리키기',ko:'자기 자신을 가리킬 때'},{ja:'손을 모으기',ko:'부탁/사과/식사 전후 인사'},{ja:'무릎 꿇고 앉기',ko:'기본적인 앉는 자세'}],
+    culture_verbal: [{ja:'와타시(私)',ko:'처음 만난 공식적인 관계 (저/나)'},{ja:'~상(さん)',ko:'성/이름 뒤 호칭 (정중함, 남녀 공용)'},{ja:'~군(くん)',ko:'친근한 남성용 호칭'},{ja:'~짱(ちゃん)',ko:'친근한 여성/아이용 호칭'},{ja:'요비스테',ko:'격식 없이 이름만 부름 (친밀한 사이)'},{ja:'아이즈치(맞장구)',ko:'대화 중 예의를 지키기 위한 반응'}],
+    vocab_place: [{ja:'ばしょ',ko:'장소'},{ja:'えき',ko:'역'},{ja:'ゆうびんきょく',ko:'우체국'},{ja:'びょういん',ko:'병원'},{ja:'コンビニ',ko:'편의점'},{ja:'えいがかん',ko:'영화관'},{ja:'こうえん',ko:'공원'},{ja:'トイレ',ko:'화장실'},{ja:'がっこう',ko:'학교'},{ja:'レストラン',ko:'레스토랑'},{ja:'カフェ',ko:'카페'},{ja:'としょかん',ko:'도서관'},{ja:'パンや',ko:'빵집'},{ja:'うち',ko:'집'},{ja:'こうばん',ko:'파출소'}],
+    vocab_country: [{ja:'くに',ko:'나라'},{ja:'かんこく',ko:'한국'},{ja:'にほん',ko:'일본'},{ja:'ちゅうごく',ko:'중국'},{ja:'アメリカ',ko:'미국'}],
+    vocab_hobby: [{ja:'しゅみ',ko:'취미'},{ja:'りょうり',ko:'요리'},{ja:'ダンス',ko:'댄스'},{ja:'やきゅう',ko:'야구'},{ja:'ゲーム',ko:'게임'},{ja:'どくしょ',ko:'독서'},{ja:'りょこう',ko:'여행'},{ja:'ピアノ',ko:'피아노'},{ja:'サッカー',ko:'축구'},{ja:'しゃしん',ko:'사진'}],
+    vocab_location: [{ja:'うえ',ko:'위'},{ja:'した',ko:'아래'},{ja:'ひだり',ko:'왼쪽'},{ja:'みぎ',ko:'오른쪽'},{ja:'なか',ko:'안'},{ja:'まえ',ko:'앞'},{ja:'うしろ',ko:'뒤'},{ja:'となり',ko:'옆'}],
+    vocab_particle: [{ja:'は',ko:'은/는 (주격, 발음:와)'},{ja:'の',ko:'의/명사연결(~인)'},{ja:'と',ko:'와/과/랑'},{ja:'に',ko:'에'},{ja:'が',ko:'이/가'},{ja:'も',ko:'도'},{ja:'か',ko:'까? (질문)'},{ja:'ね',ko:'네 (확인)'},{ja:'よ',ko:'요 (의견)'}],
+    life_intro: [{ja:'はじめまして',ko:'처음 뵙겠습니다'},{ja:'〜から きました',ko:'~에서 왔습니다'},{ja:'〜の １ねんせいです',ko:'~의 1학년입니다'},{ja:'どうぞ よろしく おねがいします',ko:'아무쪼록 잘 부탁드립니다'},{ja:'しゅみは なんですか',ko:'취미는 무엇입니까?'},{ja:'こちらは ともだちの 〜さんです',ko:'이쪽은 친구인 ~씨입니다'},{ja:'こちらこそ',ko:'저야말로'}],
+    life_info: [{ja:'도쿄',ko:'일본의 수도'},{ja:'엔',ko:'일본의 화폐단위'},{ja:'기미가요',ko:'일본의 국가'},{ja:'히노마루',ko:'일본의 국기'},{ja:'기모노/유카타',ko:'일본 전통의상'},{ja:'스모',ko:'전통스포츠'},{ja:'입헌군주제 & 의원내각제',ko:'정치 제도'},{ja:'기시다 후미오',ko:'일본 총리'},{ja:'나루히토',ko:'현 천황'},{ja:'레이와',ko:'현재 연호 (올해 레이와 8년)'},{ja:'국화',ko:'왕실 대표 꽃'},{ja:'벚꽃',ko:'국민 선호 꽃'},{ja:'기타사토 시바사부로',ko:'1000엔 인물 (세균학자)'},{ja:'쓰다 우메코',ko:'5000엔 인물 (여성교육)'},{ja:'시부사와 에이이치',ko:'10000엔 인물 (기업가)'},{ja:'홋카이도/혼슈/시코쿠/규슈',ko:'일본 4대 섬'}],
+    vocab_custom: [] 
+};
+
+DB.hira_all = [...DB.hira_50, ...DB.hira_daku, ...DB.hira_handaku, ...DB.hira_yoon, ...DB.hira_chouon, ...DB.hira_num];
+DB.vocab_all = [...DB.vocab_place, ...DB.vocab_country, ...DB.vocab_hobby, ...DB.vocab_location, ...DB.vocab_particle];
+DB.all = [...DB.hira_all, ...DB.culture_nonverbal, ...DB.culture_verbal, ...DB.vocab_all, ...DB.life_intro, ...DB.life_info];
+
+/* =========================================
+   전역 상태 및 유저 DB 관리
+========================================= */
+let currentQuizList = [];
+let currentQuestion = null;
+let currentCategory = '';
+let isQuizRunning = false;
+let sessionScore = 0; 
+let questionStartTime = 0;
+
+let currentUser = { ip: 'unknown', name: '익명', score: 0 };
+let jgameDB = JSON.parse(localStorage.getItem('jgame_master_db') || '{}');
+let errorStats = JSON.parse(localStorage.getItem('jgame_error_stats') || '{"hiragana":0,"culture":0,"vocab":0,"life":0}');
+
+window.onload = async function() {
+    try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        currentUser.ip = data.ip;
+    } catch(e) {
+        currentUser.ip = 'local-' + Math.floor(Math.random() * 100000);
+    }
+
+    if (jgameDB[currentUser.ip]) {
+        currentUser = jgameDB[currentUser.ip];
+    } else {
+        let name = prompt("JGame에 처음 접속하셨군요! 닉네임을 입력해주세요.", "익명");
+        currentUser.name = (name && name.trim() !== "") ? name.trim() : "익명";
+        currentUser.score = 0;
+        saveUserToDB();
+    }
+    
+    document.getElementById('userTopBar').style.display = 'flex';
+    updateTopUI();
+};
+
+function saveUserToDB() {
+    jgameDB[currentUser.ip] = currentUser;
+    localStorage.setItem('jgame_master_db', JSON.stringify(jgameDB));
+    updateTopUI();
+}
+
+function getRankInfo(score) {
+    if (score >= 500000) return "스파이더맨 머리";
+    if (score >= 100000) return "다이아몬드 손";
+    if (score >= 50000) return "에메랄드 손";
+    if (score >= 10000) return "플래티넘 손";
+    if (score >= 5000) return "금 손";
+    if (score >= 1000) return "은 손";
+    if (score >= 100) return "동 손";
+    return "똥 손"; 
+}
+
+function updateTopUI() {
+    document.getElementById('topRank').innerText = `[${getRankInfo(currentUser.score)}]`;
+    document.getElementById('topName').innerText = currentUser.name;
+    document.getElementById('topScore').innerText = `${currentUser.score}점`;
+}
+
+function changeNickname() {
+    let newName = prompt("새로운 닉네임을 입력해주세요:", currentUser.name);
+    if (newName && newName.trim() !== "") {
+        currentUser.name = newName.trim();
+        saveUserToDB();
+    }
+}
+
+function nav(screenId) {
+    document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+    document.getElementById(screenId).classList.add('active');
+}
+
+function getCategoryGroup(cat) {
+    if(cat.includes('hira')) return 'hiragana';
+    if(cat.includes('culture')) return 'culture';
+    if(cat.includes('vocab')) return 'vocab';
+    if(cat.includes('life')) return 'life';
+    return 'hiragana';
+}
+
+/* =========================================
+   퀴즈 진행 로직 (시간 비례 점수)
+========================================= */
+function startQuiz(category) {
+    if(!DB[category] || DB[category].length < 4) {
+        alert("데이터가 부족합니다. (최소 4개 이상 필요)");
+        return;
+    }
+    currentCategory = category;
+    currentQuizList = [...DB[category]];
+    isQuizRunning = true;
+    sessionScore = 0;
+    document.getElementById('session-score').innerText = sessionScore;
+    
+    document.getElementById('quiz-title').innerText = category.replace('_', ' ').toUpperCase() + " 테스트";
+    nav('screen-quiz');
+    nextQuestion();
+}
+
+function stopQuiz() {
+    isQuizRunning = false;
+    nav('screen-main');
+}
+
+function nextQuestion() {
+    if(!isQuizRunning) return;
+    
+    const dir = document.getElementById('lang-dir').value;
+    const isJaToKo = (dir === 'ja-ko');
+    
+    const qIndex = Math.floor(Math.random() * currentQuizList.length);
+    currentQuestion = currentQuizList[qIndex];
+    
+    const qElem = document.getElementById('question');
+    const questionText = isJaToKo ? currentQuestion.ja : currentQuestion.ko;
+    qElem.innerText = questionText;
+    
+    if(questionText === 'き' || questionText === 'れ') {
+        qElem.className = 'question-box ' + (Math.random() > 0.5 ? 'font-type-1' : 'font-type-2');
+    } else {
+        qElem.className = 'question-box';
+    }
+
+    let options = [currentQuestion];
+    let tempDB = [...DB[currentCategory]];
+    tempDB.splice(qIndex, 1); 
+    
+    tempDB.sort(() => 0.5 - Math.random());
+    options = options.concat(tempDB.slice(0, 3));
+    options.sort(() => 0.5 - Math.random());
+    
+    const optionsDiv = document.getElementById('options');
+    optionsDiv.innerHTML = '';
+    
+    options.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'option-btn';
+        btn.innerText = isJaToKo ? opt.ko : opt.ja;
+        btn.onclick = () => checkAnswer(opt, btn);
+        optionsDiv.appendChild(btn);
+    });
+    
+    // 문제 출제 시간 기록 (타이머 시작)
+    questionStartTime = Date.now();
+}
+
+function checkAnswer(selectedOpt, btn) {
+    document.querySelectorAll('.option-btn').forEach(b => b.style.pointerEvents = 'none');
+    
+    const timeTaken = (Date.now() - questionStartTime) / 1000; // 초 단위
+    const isCorrect = (selectedOpt.ja === currentQuestion.ja);
+    let points = 0;
+    
+    if(isCorrect) {
+        btn.classList.add('correct');
+        // 빨리 맞출수록 점수 높음 (최대 10점, 5초 이상 걸려도 최소 1점 부여)
+        points = Math.max(1, 10 - Math.floor(timeTaken * 2));
+        showFeedback(true);
+    } else {
+        btn.classList.add('wrong');
+        // 빨리 틀릴수록 감점 큼 (0초 대답 시 최대 -5점, 지연 후 틀리면 감점 적어짐)
+        points = Math.min(-1, -5 + Math.floor(timeTaken));
+        showFeedback(false);
+        
+        errorStats[getCategoryGroup(currentCategory)]++;
+        localStorage.setItem('jgame_error_stats', JSON.stringify(errorStats));
+        
+        document.querySelectorAll('.option-btn').forEach(b => {
+            const dir = document.getElementById('lang-dir').value;
+            const ansText = (dir === 'ja-ko') ? currentQuestion.ko : currentQuestion.ja;
+            if(b.innerText === ansText) b.classList.add('correct');
+        });
+    }
+    
+    // 세션 점수 표시 및 글로벌 DB 실시간 반영
+    sessionScore += points;
+    document.getElementById('session-score').innerText = sessionScore;
+    
+    currentUser.score = Math.max(0, currentUser.score + points); // 0점 밑으로는 안 내려감
+    saveUserToDB();
+    
+    setTimeout(() => { if(isQuizRunning) nextQuestion(); }, 1000);
+}
+
+function showFeedback(isCorrect) {
+    const el = document.getElementById(isCorrect ? 'feedback-o' : 'feedback-x');
+    el.style.opacity = 1;
+    setTimeout(() => el.style.opacity = 0, 800);
+}
+
+/* =========================================
+   랭킹 시스템 (DB 렌더링)
+========================================= */
+function showRanking() {
+    let allUsers = Object.values(jgameDB);
+    allUsers.sort((a, b) => b.score - a.score); // 내림차순 정렬
+    
+    let container = document.getElementById('ranking-container');
+    
+    if(allUsers.length === 0) {
+        container.innerHTML = '<p style="text-align:center; padding: 20px;">아직 등록된 랭커가 없습니다.</p>';
+    } else {
+        let html = '<table class="ranking-table">';
+        html += '<tr><th>순위</th><th>등급</th><th>이름</th><th>누적 점수</th></tr>';
+        
+        allUsers.forEach((user, idx) => {
+            let rankStr = (idx + 1) + "위";
+            let rankLevel = getRankInfo(user.score);
+            let highlight = (user.ip === currentUser.ip) ? 'style="background-color: #e8f4f8;"' : '';
+            
+            html += `<tr ${highlight}>
+                        <td style="font-weight:bold;">${rankStr}</td>
+                        <td style="color:var(--primary); font-weight:bold;">${rankLevel}</td>
+                        <td style="font-weight:bold;">${user.name}</td>
+                        <td style="color:var(--wrong); font-weight:bold;">${user.score}점</td>
+                     </tr>`;
+        });
+        html += '</table>';
+        container.innerHTML = html;
+    }
+    nav('screen-ranking');
+}
+
+/* =========================================
+   오답 통계
+========================================= */
+function showStats() {
+    const container = document.getElementById('stats-container');
+    container.innerHTML = '';
+    
+    let maxErrors = Math.max(...Object.values(errorStats), 1);
+    const labels = {hiragana: '히라가나', culture: '문화', vocab: '어휘', life: '실생활'};
+    
+    for(let key in errorStats) {
+        let percentage = (errorStats[key] / maxErrors) * 100;
+        if(errorStats[key] === 0) percentage = 0;
+        
+        container.innerHTML += `
+            <div class="stats-bar">
+                <div class="bar-label">${labels[key]}</div>
+                <div class="bar-track">
+                    <div class="bar-fill" style="width: ${percentage}%;"></div>
+                </div>
+                <div class="bar-value">${errorStats[key]}회</div>
+            </div>
+        `;
+    }
+    nav('screen-stats');
+}
+
+/* =========================================
+   사용자 단어장
+========================================= */
+function addCustomWord() {
+    const ja = document.getElementById('customJa').value.trim();
+    const ko = document.getElementById('customKo').value.trim();
+    if(!ja || !ko) { alert('단어와 뜻을 모두 입력해주세요.'); return; }
+    
+    DB.vocab_custom.push({ja: ja, ko: ko});
+    document.getElementById('customJa').value = '';
+    document.getElementById('customKo').value = '';
+    updateCustomList();
+}
+
+function updateCustomList() {
+    const ul = document.getElementById('customWordList');
+    ul.innerHTML = '';
+    DB.vocab_custom.forEach(item => {
+        const li = document.createElement('li');
+        li.innerText = `${item.ja} -> ${item.ko}`;
+        li.style.padding = '5px 0';
+        li.style.borderBottom = '1px solid #eee';
+        ul.appendChild(li);
+    });
+}
+
+/* =========================================
+   쓰기(작성) 테스트 (HTML5 Canvas)
+========================================= */
+const canvas = document.getElementById('drawCanvas');
+const ctx = canvas.getContext('2d');
+let isDrawing = false;
+let currentWriteChar = {};
+
+ctx.lineWidth = 6;
+ctx.lineCap = 'round';
+ctx.strokeStyle = '#2C3E50';
+
+canvas.addEventListener('mousedown', (e) => { isDrawing = true; draw(e); });
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('mouseup', () => { isDrawing = false; ctx.beginPath(); });
+canvas.addEventListener('mouseleave', () => { isDrawing = false; ctx.beginPath(); });
+
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; drawTouch(e); }, {passive: false});
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); drawTouch(e); }, {passive: false});
+canvas.addEventListener('touchend', () => { isDrawing = false; ctx.beginPath(); });
+
+function draw(e) {
+    if(!isDrawing) return;
+    ctx.lineTo(e.offsetX, e.offsetY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(e.offsetX, e.offsetY);
+}
+function drawTouch(e) {
+    if(!isDrawing) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.touches[0].clientX - rect.left;
+    const y = e.touches[0].clientY - rect.top;
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+}
+
+function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+function startWritingTest() {
+    nav('screen-write');
+    nextWriteQuestion();
+}
+
+function nextWriteQuestion() {
+    clearCanvas();
+    document.getElementById('write-answer').style.display = 'none';
+    const qIndex = Math.floor(Math.random() * DB.hira_50.length);
+    currentWriteChar = DB.hira_50[qIndex];
+    document.getElementById('write-question').innerText = `발음: ${currentWriteChar.ko}`;
+}
+
+function showWriteAnswer() {
+    const ansDiv = document.getElementById('write-answer');
+    ansDiv.innerText = currentWriteChar.ja;
+    ansDiv.style.display = 'block';
+}
+
+</script>
+</body>
+</html>
